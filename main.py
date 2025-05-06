@@ -965,6 +965,7 @@ def keyboardListener(key, x, y):
             sys.exit()
 
 # Handle special keys (arrow keys) - FIXED to move the truck instead of camera
+# Handle special keys (arrow keys)
 def specialKeyListener(key, x, y):
     if game_started and not game_over:
         if key == GLUT_KEY_UP:
@@ -979,10 +980,10 @@ def specialKeyListener(key, x, y):
             fire_truck['position'][2] -= TRUCK_SPEED * math.cos(angle_rad)
         elif key == GLUT_KEY_LEFT:
             # Turn left
-            fire_truck['rotation'] = (fire_truck['rotation'] - 2) % 360
+            fire_truck['rotation'] = (fire_truck['rotation'] + 5) % 360
         elif key == GLUT_KEY_RIGHT:
             # Turn right
-            fire_truck['rotation'] = (fire_truck['rotation'] + 2) % 360
+            fire_truck['rotation'] = (fire_truck['rotation'] - 5) % 360
         
         # Keep the truck within the world boundaries
         fire_truck['position'][0] = max(min(fire_truck['position'][0], WORLD_SIZE - 5), -WORLD_SIZE + 5)
