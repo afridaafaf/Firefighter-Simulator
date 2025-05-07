@@ -29,7 +29,7 @@ WATER_REFILL_DISTANCE = 5.0  # Distance for automatic water refill
 FIRE_POP_INTERVAL = 6.0  # Minimum interval between fire pops in seconds
 
 # Game over parameters
-TIME_LIMIT = 300  # 5 minutes time limit
+TIME_LIMIT = 60  # 5 minutes time limit
 MAX_LIVES = 3  # Number of lives
 SCORE_PER_HOUSE = 1000  # Points for saving a house
 SCORE_PER_SECOND = 10  # Points per second remaining
@@ -317,357 +317,268 @@ def draw_person(position, rotation=0):
     
     glPopMatrix()
 
-def draw_shapes():
-    # Draw the ground
+def draw_ground():
     glDisable(GL_LIGHTING)
     glColor3f(0.3, 0.7, 0.3)  # Green ground
-    
-    # Draw ground plane
     glBegin(GL_QUADS)
     glVertex3f(-WORLD_SIZE, 0, -WORLD_SIZE)
     glVertex3f(WORLD_SIZE, 0, -WORLD_SIZE)
     glVertex3f(WORLD_SIZE, 0, WORLD_SIZE)
     glVertex3f(-WORLD_SIZE, 0, WORLD_SIZE)
     glEnd()
-    
-    # Draw roads
+
+def draw_all_roads():
     draw_road()
-    
-    # Draw water stations
+
+def draw_all_water_stations():
     for station in water_stations:
         draw_water_extension_station(station['position'])
-    
-    # Draw houses
+
+def draw_all_houses():
     for house in houses:
-        x, y, z = house['position']
-        health = house['health']
-        structural_integrity = house['structural_integrity']
-        on_fire = house['on_fire']
-        fire_intensity = house['fire_intensity']
-        
-        # Calculate health percentage for color
-        health_pct = health / MAX_HEALTH
-        structural_pct = structural_integrity / MAX_HEALTH
-        
-        glPushMatrix()
-        glTranslatef(x, y, z)
-        
-        # Draw house body with structural damage visualization
-        if on_fire:
-            # House on fire is reddish
-            glColor3f(min(1.0, 1.0 - health_pct + 0.5), health_pct * 0.5, health_pct * 0.3)
+        draw_single_house(house)
+
+def draw_single_house(house):
+    x, y, z = house['position']
+    health = house['health']
+    structural_integrity = house['structural_integrity']
+    on_fire = house['on_fire']
+    fire_intensity = house['fire_intensity']
+    health_pct = health / MAX_HEALTH
+    structural_pct = structural_integrity / MAX_HEALTH
+
+    glPushMatrix()
+    glTranslatef(x, y, z)
+
+    # House color
+    if on_fire:
+        glColor3f(min(1.0, 1.0 - health_pct + 0.5), health_pct * 0.5, health_pct * 0.3)
+    elif health_pct < 0.5:
+        glColor3f(health_pct * 0.5, health_pct * 0.5, health_pct * 0.5)
+    else:
+        glColor3f(health_pct, health_pct, health_pct)
+
+    # Deform based on structural integrity
+    glPushMatrix()
+    if structural_pct < 0.5:
+        tilt_angle = (1 - structural_pct) * 15
+        glRotatef(tilt_angle, 1, 0, 1)
+    glScalef(4.0, 4.0 * structural_pct, 4.0)
+    glutSolidCube(1.0)
+    glPopMatrix()
+
+    # Roof
+    glPushMatrix()
+    glTranslatef(0, 3 * structural_pct, 0)
+    glColor3f(0.7 * health_pct, 0.3 * health_pct, 0.3 * health_pct)
+    glBegin(GL_TRIANGLES)
+    # Front
+    glVertex3f(0, 2, 0); glVertex3f(-2, 0, -2); glVertex3f(2, 0, -2)
+    # Back
+    glVertex3f(0, 2, 0); glVertex3f(-2, 0, 2); glVertex3f(2, 0, 2)
+    # Left
+    glVertex3f(0, 2, 0); glVertex3f(-2, 0, -2); glVertex3f(-2, 0, 2)
+    # Right
+    glVertex3f(0, 2, 0); glVertex3f(2, 0, -2); glVertex3f(2, 0, 2)
+    glEnd()
+    glPopMatrix()
+
+    # Fire effect
+    if on_fire:
+        draw_fire_effect(fire_intensity, house['fire_type'])
+
+    # Health and structural bars
+    draw_house_bars(health, structural_integrity)
+
+    glPopMatrix()
+
+def draw_fire_effect(fire_intensity, fire_type):
+    glDisable(GL_LIGHTING)
+    glPointSize(8.0)
+    glBegin(GL_POINTS)
+    num_particles = int(fire_intensity * 50) + 30
+    for i in range(num_particles):
+        x = fire_intensity * math.sin(time.time() * 3 + i) * 2
+        y = random.uniform(0, fire_intensity * 3) + 3
+        z = fire_intensity * math.cos(time.time() * 3 + i) * 2
+        t = random.uniform(0, 1)
+        if t < 0.3:
+            glColor3f(1.0, 1.0, 0.0)
+        elif t < 0.7:
+            glColor3f(1.0, 0.5, 0.0)
         else:
-            if health_pct < 0.5:
-                # Damaged house (not on fire) is gray/black
-                glColor3f(health_pct * 0.5, health_pct * 0.5, health_pct * 0.5)
-            else:
-                # Normal house color based on health
-                glColor3f(health_pct, health_pct, health_pct)
-        
-        # House body with deformation based on structural integrity
-        glPushMatrix()
-        # Apply deformation based on structural damage
-        if structural_pct < 0.5:
-            # Tilt the house as it becomes more damaged
-            tilt_angle = (1 - structural_pct) * 15
-            glRotatef(tilt_angle, 1, 0, 1)
-        
-        glScalef(4.0, 4.0 * structural_pct, 4.0)
-        glutSolidCube(1.0)
-        glPopMatrix()
-        
-        # Roof (pyramidal)
-        glPushMatrix()
-        glTranslatef(0, 3 * structural_pct, 0)
-        glColor3f(0.7 * health_pct, 0.3 * health_pct, 0.3 * health_pct)  # Roof color
-        
-        glBegin(GL_TRIANGLES)
-        # Front face of roof
-        glVertex3f(0, 2, 0)  # Top point
-        glVertex3f(-2, 0, -2)  # Bottom left
-        glVertex3f(2, 0, -2)  # Bottom right
-        
-        # Back face of roof
-        glVertex3f(0, 2, 0)  # Top point
-        glVertex3f(-2, 0, 2)  # Bottom left
-        glVertex3f(2, 0, 2)  # Bottom right
-        
-        # Left face of roof
-        glVertex3f(0, 2, 0)  # Top point
-        glVertex3f(-2, 0, -2)  # Bottom front
-        glVertex3f(-2, 0, 2)  # Bottom back
-        
-        # Right face of roof
-        glVertex3f(0, 2, 0)  # Top point
-        glVertex3f(2, 0, -2)  # Bottom front
-        glVertex3f(2, 0, 2)  # Bottom back
-        glEnd()
-        
-        glPopMatrix()
-        
-        # Draw fire if house is on fire
-        if on_fire:
-            # Enhanced fire effect
-            glDisable(GL_LIGHTING)
-            glPointSize(8.0)  # Increased point size for better visibility
-            glBegin(GL_POINTS)
-            
-            # More particles for better visibility
-            num_particles = int(fire_intensity * 50) + 30  # Increased number of particles
-            
-            for i in range(num_particles):
-                # Create a more dynamic fire effect
-                x = fire_intensity * math.sin(time.time() * 3 + i) * 2
-                y = random.uniform(0, fire_intensity * 3) + 3  # Higher flames
-                z = fire_intensity * math.cos(time.time() * 3 + i) * 2
-                
-                # Fire color (yellow/orange/red)
-                t = random.uniform(0, 1)
-                if t < 0.3:
-                    glColor3f(1.0, 1.0, 0.0)  # Yellow
-                elif t < 0.7:
-                    glColor3f(1.0, 0.5, 0.0)  # Orange
-                else:
-                    glColor3f(1.0, 0.0, 0.0)  # Red
-                
-                glVertex3f(x, y, z)
-            
-            glEnd()
-            
-            # Add some larger fire particles
-            glPointSize(12.0)
-            glBegin(GL_POINTS)
-            for i in range(10):
-                x = random.uniform(-2, 2)
-                y = random.uniform(3, 6)
-                z = random.uniform(-2, 2)
-                glColor3f(1.0, random.uniform(0.3, 0.7), 0.0)
-                glVertex3f(x, y, z)
-            glEnd()
-            
-            glEnable(GL_LIGHTING)
-        
-        # Health bar above the house
-        glTranslatef(0, 7, 0)
-        
-        # Background of health bar
-        glColor3f(0.2, 0.2, 0.2)
-        glPushMatrix()
-        glScalef(4.0, 0.3, 0.3)
-        glutSolidCube(1.0)
-        glPopMatrix()
-        
-        # Health bar
-        health_pct = health / MAX_HEALTH
-        
-        # Health bar color (green to red)
-        if health_pct > 0.6:
-            glColor3f(0.0, 1.0, 0.0)  # Green
-        elif health_pct > 0.3:
-            glColor3f(1.0, 1.0, 0.0)  # Yellow
-        else:
-            glColor3f(1.0, 0.0, 0.0)  # Red
-        
-        glPushMatrix()
-        glTranslatef((health_pct - 1.0) * 2, 0, 0)  # Adjust position based on health
-        glScalef(4.0 * health_pct, 0.25, 0.25)  # Adjust width based on health
-        glutSolidCube(1.0)
-        glPopMatrix()
-        
-        # Structural integrity bar (below health bar)
-        glTranslatef(0, -0.4, 0)
-        
-        # Background of structural bar
-        glColor3f(0.2, 0.2, 0.2)
-        glPushMatrix()
-        glScalef(4.0, 0.3, 0.3)
-        glutSolidCube(1.0)
-        glPopMatrix()
-        
-        # Structural bar
-        structural_pct = structural_integrity / MAX_HEALTH
-        
-        # Structural bar color (blue to purple)
-        if structural_pct > 0.6:
-            glColor3f(0.0, 0.5, 1.0)  # Blue
-        elif structural_pct > 0.3:
-            glColor3f(0.5, 0.0, 1.0)  # Purple
-        else:
-            glColor3f(1.0, 0.0, 0.5)  # Magenta
-        
-        glPushMatrix()
-        glTranslatef((structural_pct - 1.0) * 2, 0, 0)  # Adjust position based on structural integrity
-        glScalef(4.0 * structural_pct, 0.25, 0.25)  # Adjust width based on structural integrity
-        glutSolidCube(1.0)
-        glPopMatrix()
-        
-        glPopMatrix()
-    
-    # Draw trees
+            glColor3f(1.0, 0.0, 0.0)
+        glVertex3f(x, y, z)
+    glEnd()
+    glEnable(GL_LIGHTING)
+
+def draw_house_bars(health, structural_integrity):
+    health_pct = health / MAX_HEALTH
+    structural_pct = structural_integrity / MAX_HEALTH
+
+    glTranslatef(0, 7, 0)
+    # Health bar background
+    glColor3f(0.2, 0.2, 0.2)
+    glPushMatrix()
+    glScalef(4.0, 0.3, 0.3)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    # Health bar
+    if health_pct > 0.6:
+        glColor3f(0.0, 1.0, 0.0)
+    elif health_pct > 0.3:
+        glColor3f(1.0, 1.0, 0.0)
+    else:
+        glColor3f(1.0, 0.0, 0.0)
+    glPushMatrix()
+    glTranslatef((health_pct - 1.0) * 2, 0, 0)
+    glScalef(4.0 * health_pct, 0.25, 0.25)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    # Structural bar background
+    glTranslatef(0, -0.4, 0)
+    glColor3f(0.2, 0.2, 0.2)
+    glPushMatrix()
+    glScalef(4.0, 0.3, 0.3)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    # Structural bar
+    if structural_pct > 0.6:
+        glColor3f(0.0, 0.5, 1.0)
+    elif structural_pct > 0.3:
+        glColor3f(0.5, 0.0, 1.0)
+    else:
+        glColor3f(1.0, 0.0, 0.5)
+    glPushMatrix()
+    glTranslatef((structural_pct - 1.0) * 2, 0, 0)
+    glScalef(4.0 * structural_pct, 0.25, 0.25)
+    glutSolidCube(1.0)
+    glPopMatrix()
+
+def draw_all_trees():
     for tree_pos in trees:
         draw_tree(tree_pos)
-    
-    # Draw people
+
+def draw_all_people():
     for person in people:
         draw_person(person['position'], person['rotation'])
-    
-    # Draw fire truck
+
+def draw_fire_truck_and_effects():
     x, y, z = fire_truck['position']
     rotation = fire_truck['rotation']
-    
     glPushMatrix()
     glTranslatef(x, y, z)
     glRotatef(rotation, 0, 1, 0)
-    
     # Truck body
-    glColor3f(1.0, 0.0, 0.0)  # Red truck
+    glColor3f(1.0, 0.0, 0.0)
     glPushMatrix()
     glScalef(4.0, 2.0, 2.0)
     glutSolidCube(1.0)
     glPopMatrix()
-    
     # Truck cabin
-    glColor3f(0.8, 0.8, 0.8)  # Light gray
+    glColor3f(0.8, 0.8, 0.8)
     glPushMatrix()
     glTranslatef(-1.0, 1.5, 0)
     glScalef(2.0, 1.0, 1.8)
     glutSolidCube(1.0)
     glPopMatrix()
-    
     # Water tank
-    glColor3f(0.0, 0.0, 0.7)  # Dark blue
+    glColor3f(0.0, 0.0, 0.7)
     glPushMatrix()
     glTranslatef(1.0, 1.0, 0)
     glScalef(2.0, 1.0, 1.6)
     glutSolidCube(1.0)
     glPopMatrix()
-    
     # Wheels
-    glColor3f(0.2, 0.2, 0.2)  # Dark gray
-    
-    # Front left wheel
-    glPushMatrix()
-    glTranslatef(-1.5, -0.6, 1.2)
-    glRotatef(90, 0, 1, 0)
-    glutSolidTorus(0.4, 0.6, 8, 8)
-    glPopMatrix()
-    
-    # Front right wheel
-    glPushMatrix()
-    glTranslatef(-1.5, -0.6, -1.2)
-    glRotatef(90, 0, 1, 0)
-    glutSolidTorus(0.4, 0.6, 8, 8)
-    glPopMatrix()
-    
-    # Back left wheel
-    glPushMatrix()
-    glTranslatef(1.5, -0.6, 1.2)
-    glRotatef(90, 0, 1, 0)
-    glutSolidTorus(0.4, 0.6, 8, 8)
-    glPopMatrix()
-    
-    # Back right wheel
-    glPushMatrix()
-    glTranslatef(1.5, -0.6, -1.2)
-    glRotatef(90, 0, 1, 0)
-    glutSolidTorus(0.4, 0.6, 8, 8)
-    glPopMatrix()
-    
-    # Water cannon
-    glColor3f(0.5, 0.5, 0.5)  # Gray
+    glColor3f(0.2, 0.2, 0.2)
+    for dx, dz in [(-1.5, 1.2), (-1.5, -1.2), (1.5, 1.2), (1.5, -1.2)]:
+        glPushMatrix()
+        glTranslatef(dx, -0.6, dz)
+        glRotatef(90, 0, 1, 0)
+        glutSolidTorus(0.4, 0.6, 8, 8)
+        glPopMatrix()
+    # Water cannon and nozzle
+    glColor3f(0.5, 0.5, 0.5)
     glPushMatrix()
     glTranslatef(1.0, 2.0, 0)
     glRotatef(-30, 0, 0, 1)
     glRotatef(90, 0, 1, 0)
     glutSolidCylinder(0.3, 2.0, 10, 5)
     glPopMatrix()
-    
-    # Nozzle tip - clearly visible
-    glColor3f(0.3, 0.3, 0.3)  # Darker gray
+    glColor3f(0.3, 0.3, 0.3)
     glPushMatrix()
-    glTranslatef(1.0 + 1.73, 2.0 - 1.0, 0)  # Position at end of hose
+    glTranslatef(1.0 + 1.73, 2.0 - 1.0, 0)
     glRotatef(-30, 0, 0, 1)
     glRotatef(90, 0, 1, 0)
-    glutSolidCone(0.4, 0.8, 10, 5)  # Conical nozzle
+    glutSolidCone(0.4, 0.8, 10, 5)
     glPopMatrix()
-    
-    # If the truck is spraying water, draw water spray
+    # Water spray
     if fire_truck['spraying'] and fire_truck['water'] > 0:
-        # Draw water spray
-        glDisable(GL_LIGHTING)
-        glPointSize(4.0)  # Increased point size for better visibility
-        glBegin(GL_POINTS)
-        
-        # Calculate water spray target (in front of the truck)
-        angle_rad = math.radians(rotation)
-        spray_start = [1.0 * math.sin(1), 1.5, 1.0 * math.cos(1)]
-        spray_target = [SPRAY_DISTANCE * math.sin(1), 1.0, SPRAY_DISTANCE * math.cos(1)]
-        
-        # Direction vector
-        direction = [
-            spray_target[0] - spray_start[0],
-            spray_target[1] - spray_start[1],
-            spray_target[2] - spray_start[2]
-        ]
-        
-        # Normalize direction
-        length = math.sqrt(direction[0]**2 + direction[1]**2 + direction[2]**2)
-        if length > 0:
-            direction = [direction[0]/length, direction[1]/length, direction[2]/length]
-        
-        
-        # Water particles
-        particles = 100  # More particles for better visibility
-        
-        for i in range(particles):
-            # Position along the spray path
-            t = random.uniform(0, 1)
-            x_p = spray_start[0] + direction[0] * SPRAY_DISTANCE * t
-            y_p = spray_start[1] + direction[1] * SPRAY_DISTANCE * t - 0.5 * 9.8 * t**2  # Simple gravity arc
-            z_p = spray_start[2] + direction[2] * SPRAY_DISTANCE * t
-            
-            # Small random offset for spray width
-            x_p += random.uniform(-0.2, 0.2)
-            y_p += random.uniform(-0.2, 0.2)
-            z_p += random.uniform(-0.2, 0.2)
-            
-            # Water color (brighter blue)
-            glColor3f(0.0, 0.7, 1.0)
-            glVertex3f(x_p, y_p, z_p)
-        
-        glEnd()
-        glEnable(GL_LIGHTING)
-    
-    # Water level indicator on the truck
+        draw_water_spray(rotation)
+    # Water level indicator
+    draw_truck_water_level()
+    glPopMatrix()
+
+def draw_water_spray(rotation):
+    glDisable(GL_LIGHTING)
+    glPointSize(4.0)
+    glBegin(GL_POINTS)
+    angle_rad = math.radians(rotation)
+    spray_start = [1.0 * math.sin(1), 1.5, 1.0 * math.cos(1)]
+    spray_target = [SPRAY_DISTANCE * math.sin(1), 1.0, SPRAY_DISTANCE * math.cos(1)]
+    direction = [
+        spray_target[0] - spray_start[0],
+        spray_target[1] - spray_start[1],
+        spray_target[2] - spray_start[2]
+    ]
+    length = math.sqrt(direction[0]**2 + direction[1]**2 + direction[2]**2)
+    if length > 0:
+        direction = [direction[0]/length, direction[1]/length, direction[2]/length]
+    particles = 100
+    for i in range(particles):
+        t = random.uniform(0, 1)
+        x_p = spray_start[0] + direction[0] * SPRAY_DISTANCE * t
+        y_p = spray_start[1] + direction[1] * SPRAY_DISTANCE * t - 0.5 * 9.8 * t**2
+        z_p = spray_start[2] + direction[2] * SPRAY_DISTANCE * t
+        x_p += random.uniform(-0.2, 0.2)
+        y_p += random.uniform(-0.2, 0.2)
+        z_p += random.uniform(-0.2, 0.2)
+        glColor3f(0.0, 0.7, 1.0)
+        glVertex3f(x_p, y_p, z_p)
+    glEnd()
+    glEnable(GL_LIGHTING)
+
+def draw_truck_water_level():
     water_pct = fire_truck['water'] / WATER_CAPACITY
-    
     glPushMatrix()
     glTranslatef(0, 3.0, 0)
-    
-    # Water level background
     glColor3f(0.2, 0.2, 0.2)
     glPushMatrix()
     glScalef(3.0, 0.3, 0.3)
     glutSolidCube(1.0)
     glPopMatrix()
-    
-    # Water level foreground
     if water_pct > 0.6:
-        glColor3f(0.0, 0.0, 1.0)  # Blue
+        glColor3f(0.0, 0.0, 1.0)
     elif water_pct > 0.3:
-        glColor3f(0.0, 0.5, 1.0)  # Light blue
+        glColor3f(0.0, 0.5, 1.0)
     else:
-        glColor3f(1.0, 0.0, 0.0)  # Red (low water)
-    
+        glColor3f(1.0, 0.0, 0.0)
     glPushMatrix()
-    glTranslatef((water_pct - 1.0) * 1.5, 0, 0)  # Adjust position based on water level
-    glScalef(3.0 * water_pct, 0.25, 0.25)  # Adjust width based on water level
+    glTranslatef((water_pct - 1.0) * 1.5, 0, 0)
+    glScalef(3.0 * water_pct, 0.25, 0.25)
     glutSolidCube(1.0)
     glPopMatrix()
-    
     glPopMatrix()
-    
-    glPopMatrix()
+
+def draw_shapes():
+    draw_ground()
+    draw_all_roads()
+    draw_all_water_stations()
+    draw_all_houses()
+    draw_all_trees()
+    draw_all_people()
+    draw_fire_truck_and_effects()
+
 
 def keyboardListener(key, x, y):
     global game_started, game_over, score, game_time, houses_saved, fire_truck
@@ -737,7 +648,6 @@ def specialKeyListener(key, x, y):
             new_z = fire_truck['position'][2] + TRUCK_SPEED * math.cos(angle_rad)
             
             if not check_collision([new_x, 0, new_z]):
-                print("up collision")
                 fire_truck['position'][0] = new_x
                 fire_truck['position'][2] = new_z
         
@@ -750,7 +660,6 @@ def specialKeyListener(key, x, y):
             new_z = fire_truck['position'][2] - TRUCK_SPEED * math.cos(angle_rad)
             
             if not check_collision([new_x, 0, new_z]):
-                print("down collision")
                 fire_truck['position'][0] = new_x
                 fire_truck['position'][2] = new_z
         
