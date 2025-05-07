@@ -987,11 +987,11 @@ def create_fire_particle(position, fire_type):
     return {
         'position': list(position),
         'velocity': [
-            random.uniform(-0.1, 0.1) + WIND_DIRECTION[0] * WIND_SPEED,
-            random.uniform(0.1, 0.3),
-            random.uniform(-0.1, 0.1) + WIND_DIRECTION[2] * WIND_SPEED
+            random.uniform(-0.2, 0.2) + WIND_DIRECTION[0] * WIND_SPEED * random.uniform(0.8, 1.2),
+            random.uniform(0.2, 0.5),
+            random.uniform(-0.2, 0.2) + WIND_DIRECTION[2] * WIND_SPEED * random.uniform(0.8, 1.2)
         ],
-        'size': random.uniform(0.1, 0.3),
+        'size': random.uniform(0.15, 0.35),
         'life': 1.0,
         'color': FIRE_TYPES[fire_type]['color'],
         'type': fire_type
@@ -1001,55 +1001,51 @@ def create_smoke_particle(position):
     return {
         'position': list(position),
         'velocity': [
-            random.uniform(-0.05, 0.05) + WIND_DIRECTION[0] * WIND_SPEED,
-            random.uniform(0.05, 0.15),
-            random.uniform(-0.05, 0.05) + WIND_DIRECTION[2] * WIND_SPEED
+            random.uniform(-0.1, 0.1) + WIND_DIRECTION[0] * WIND_SPEED,
+            random.uniform(0.1, 0.25),
+            random.uniform(-0.1, 0.1) + WIND_DIRECTION[2] * WIND_SPEED
         ],
-        'size': random.uniform(0.2, 0.4),
+        'size': random.uniform(0.25, 0.5),
         'life': 1.0,
         'density': random.uniform(0.3, 0.7)
     }
 
+
 def update_particles():
     global fire_particles, smoke_particles
-    
-    # Update fire particles
+    # Fire particles
     new_fire_particles = []
     for particle in fire_particles:
-        particle['life'] -= 0.02
+        particle['life'] -= 0.025
+        # Flicker
+        particle['position'][0] += particle['velocity'][0] + random.uniform(-0.02, 0.02)
+        particle['position'][1] += particle['velocity'][1] + random.uniform(-0.01, 0.03)
+        particle['position'][2] += particle['velocity'][2] + random.uniform(-0.02, 0.02)
         if particle['life'] > 0:
-            # Update position
-            for i in range(3):
-                particle['position'][i] += particle['velocity'][i]
             new_fire_particles.append(particle)
     fire_particles = new_fire_particles
-    
-    # Update smoke particles
+    # Smoke particles
     new_smoke_particles = []
     for particle in smoke_particles:
-        particle['life'] -= 0.01
-        if particle['life'] > 0:
-            # Update position
-            for i in range(3):
-                particle['position'][i] += particle['velocity'][i]
-            # Update density
-            particle['density'] -= SMOKE_DISSIPATION_RATE
-            if particle['density'] > 0:
-                new_smoke_particles.append(particle)
+        particle['life'] -= 0.012
+        particle['density'] -= SMOKE_DISSIPATION_RATE * random.uniform(0.8, 1.2)
+        for i in range(3):
+            particle['position'][i] += particle['velocity'][i] + random.uniform(-0.01, 0.01)
+        if particle['life'] > 0 and particle['density'] > 0:
+            new_smoke_particles.append(particle)
     smoke_particles = new_smoke_particles
 
+
 def draw_particles():
-    # Draw fire particles
     glDisable(GL_LIGHTING)
+    glEnable(GL_BLEND)
+    # Fire: Additive blending for glow
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE)
     for particle in fire_particles:
         glPushMatrix()
         glTranslatef(*particle['position'])
-        
-        # Set color with alpha based on life
         r, g, b = particle['color']
         glColor4f(r, g, b, particle['life'])
-        
-        # Draw particle as a billboard
         size = particle['size']
         glBegin(GL_QUADS)
         glVertex3f(-size, -size, 0)
@@ -1057,8 +1053,25 @@ def draw_particles():
         glVertex3f(size, size, 0)
         glVertex3f(-size, size, 0)
         glEnd()
-        
         glPopMatrix()
+    # Smoke: Alpha blending for softness
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+    for particle in smoke_particles:
+        glPushMatrix()
+        glTranslatef(*particle['position'])
+        alpha = particle['life'] * particle['density']
+        glColor4f(0.3, 0.3, 0.3, alpha)
+        size = particle['size']
+        glBegin(GL_QUADS)
+        glVertex3f(-size, -size, 0)
+        glVertex3f(size, -size, 0)
+        glVertex3f(size, size, 0)
+        glVertex3f(-size, size, 0)
+        glEnd()
+        glPopMatrix()
+    glDisable(GL_BLEND)
+    glEnable(GL_LIGHTING)
+
     
     # Draw smoke particles
     for particle in smoke_particles:
