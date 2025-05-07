@@ -28,6 +28,17 @@ COLLISION_DISTANCE = 6.0  # Distance for collision detection
 WATER_REFILL_DISTANCE = 5.0  # Distance for automatic water refill
 FIRE_POP_INTERVAL = 6.0  # Minimum interval between fire pops in seconds
 
+# Game over parameters
+TIME_LIMIT = 300  # 5 minutes time limit
+MAX_LIVES = 3  # Number of lives
+SCORE_PER_HOUSE = 1000  # Points for saving a house
+SCORE_PER_SECOND = 10  # Points per second remaining
+DIFFICULTY_LEVELS = {
+    'EASY': {'fire_rate': 0.5, 'damage_rate': 0.5, 'time_limit': 400},
+    'NORMAL': {'fire_rate': 1.0, 'damage_rate': 1.0, 'time_limit': 300},
+    'HARD': {'fire_rate': 1.5, 'damage_rate': 1.5, 'time_limit': 200}
+}
+
 # Add new constants for roads and water stations
 ROAD_WIDTH = 10.0
 ROAD_LENGTH = 80.0
@@ -70,6 +81,9 @@ game_time = 0
 last_time = 0
 houses_saved = 0
 game_started = False
+lives = MAX_LIVES
+current_difficulty = 'NORMAL'
+performance_rating = 0  # 0-100 rating based on performance
 water_stations = []  # Water refill stations
 hazards = []  # Environmental hazards
 smoke_particles = []  # Smoke particle system
@@ -77,6 +91,13 @@ fire_particles = []  # Fire particle system
 wind_particles = []  # Wind visualization particles
 last_fire_pop_time = 0  # Track the last time a fire popped up
 fires_occurred = False  # Track if any fires have occurred during gameplay
+trees = []  # List to store tree positions
+people = []  # List to store people positions
+
+# Notification system
+notifications = []  # List to store active notifications
+last_notification_time = 0  # Track last notification time
+NOTIFICATION_DURATION = 3.0  # How long notifications stay on screen
 
 # Add new camera-related variables
 view_mode_fps = False  # False for third-person, True for first-person
@@ -202,6 +223,97 @@ def draw_water_extension_station(position):
     glEnd()
     glPopMatrix()
     glEnable(GL_LIGHTING)
+    
+    glPopMatrix()
+
+def draw_tree(position):
+    x, y, z = position
+    glPushMatrix()
+    glTranslatef(x, y, z)
+    
+    # Tree trunk
+    glColor3f(0.55, 0.27, 0.07)  # Brown
+    glPushMatrix()
+    glScalef(0.5, 2.0, 0.5)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    
+    # Tree foliage (multiple layers for fuller look)
+    glColor3f(0.0, 0.5, 0.0)  # Green
+    # Bottom layer
+    glPushMatrix()
+    glTranslatef(0, 2.5, 0)
+    glutSolidSphere(1.5, 16, 16)
+    glPopMatrix()
+    
+    # Middle layer
+    glPushMatrix()
+    glTranslatef(0, 3.5, 0)
+    glutSolidSphere(1.2, 16, 16)
+    glPopMatrix()
+    
+    # Top layer
+    glPushMatrix()
+    glTranslatef(0, 4.5, 0)
+    glutSolidSphere(0.8, 16, 16)
+    glPopMatrix()
+    
+    glPopMatrix()
+
+def draw_person(position, rotation=0):
+    x, y, z = position
+    glPushMatrix()
+    glTranslatef(x, y, z)
+    glRotatef(rotation, 0, 1, 0)
+    
+    # Body
+    glColor3f(0.2, 0.2, 0.8)  # Blue clothes
+    glPushMatrix()
+    glTranslatef(0, 1.0, 0)
+    glScalef(0.4, 0.8, 0.2)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    
+    # Head
+    glColor3f(0.8, 0.6, 0.5)  # Skin tone
+    glPushMatrix()
+    glTranslatef(0, 1.8, 0)
+    glutSolidSphere(0.2, 16, 16)
+    glPopMatrix()
+    
+    # Arms
+    glColor3f(0.2, 0.2, 0.8)  # Blue clothes
+    # Left arm
+    glPushMatrix()
+    glTranslatef(0.3, 1.2, 0)
+    glRotatef(30, 0, 0, 1)
+    glScalef(0.15, 0.6, 0.15)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    
+    # Right arm
+    glPushMatrix()
+    glTranslatef(-0.3, 1.2, 0)
+    glRotatef(-30, 0, 0, 1)
+    glScalef(0.15, 0.6, 0.15)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    
+    # Legs
+    glColor3f(0.2, 0.2, 0.2)  # Dark pants
+    # Left leg
+    glPushMatrix()
+    glTranslatef(0.15, 0.4, 0)
+    glScalef(0.15, 0.8, 0.15)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    
+    # Right leg
+    glPushMatrix()
+    glTranslatef(-0.15, 0.4, 0)
+    glScalef(0.15, 0.8, 0.15)
+    glutSolidCube(1.0)
+    glPopMatrix()
     
     glPopMatrix()
 
@@ -391,6 +503,14 @@ def draw_shapes():
         
         glPopMatrix()
     
+    # Draw trees
+    for tree_pos in trees:
+        draw_tree(tree_pos)
+    
+    # Draw people
+    for person in people:
+        draw_person(person['position'], person['rotation'])
+    
     # Draw fire truck
     x, y, z = fire_truck['position']
     rotation = fire_truck['rotation']
@@ -552,6 +672,7 @@ def draw_shapes():
 def keyboardListener(key, x, y):
     global game_started, game_over, score, game_time, houses_saved, fire_truck
     global view_mode_fps, cam_rotation, cam_distance, cam_elevation, last_time
+    global current_difficulty, lives
     
     if game_over:
         if key == b'r' or key == b'R':
@@ -566,6 +687,7 @@ def keyboardListener(key, x, y):
             score = 0
             game_time = 0
             houses_saved = 0
+            lives = MAX_LIVES
             game_over = False
             game_started = False
     else:
@@ -580,6 +702,10 @@ def keyboardListener(key, x, y):
                 fire_truck['spraying'] = not fire_truck['spraying']
         elif key == b'v' or key == b'V':  # Toggle view mode
             view_mode_fps = not view_mode_fps
+        elif key == b'd' or key == b'D':  # Change difficulty
+            difficulties = list(DIFFICULTY_LEVELS.keys())
+            current_index = difficulties.index(current_difficulty)
+            current_difficulty = difficulties[(current_index + 1) % len(difficulties)]
         elif key == b'\x1b':  # ESC key
             sys.exit()
     
@@ -686,6 +812,7 @@ def setupCamera():
 
 def idle():
     global game_time, last_time, houses_saved, game_over, fire_truck, last_fire_pop_time
+    global notifications, last_notification_time, score, lives
     
     # Calculate delta time
     current_time = time.time()
@@ -694,6 +821,17 @@ def idle():
     
     if not game_over and game_started:
         game_time += delta_time
+        
+        # Update score based on time remaining
+        score += int(SCORE_PER_SECOND * delta_time)
+        
+        # Check time limit
+        if game_time >= DIFFICULTY_LEVELS[current_difficulty]['time_limit']:
+            game_over = True
+            notifications.append({
+                'message': "Time's up!",
+                'timestamp': current_time
+            })
         
         # Update wind
         update_wind()
@@ -705,9 +843,12 @@ def idle():
         # Update particles
         update_particles()
         
+        # Update notifications
+        update_notifications(current_time)
+        
         # Random fire popping with minimum interval
         if current_time - last_fire_pop_time >= FIRE_POP_INTERVAL:
-            if random.random() < 0.1:  # 10% chance to start a new fire
+            if random.random() < 0.1 * DIFFICULTY_LEVELS[current_difficulty]['fire_rate']:  # Adjust fire rate based on difficulty
                 pop_random_fire()
                 last_fire_pop_time = current_time
         
@@ -721,7 +862,6 @@ def idle():
                     dx = house['position'][0] - fire_truck['position'][0]
                     dz = house['position'][2] - fire_truck['position'][2]
                     distance = math.sqrt(dx*dx + dz*dz)
-                    
                     
                     if distance < SPRAY_DISTANCE:
                         # Calculate water spray direction
@@ -748,6 +888,7 @@ def idle():
                                     house['on_fire'] = False
                                     house['fire_intensity'] = 0
                                     houses_saved += 1
+                                    score += SCORE_PER_HOUSE  # Add points for saving a house
                                 
                                 # Degrade equipment
                                 fire_truck['equipment'][current_equipment]['condition'] -= 0.1
@@ -761,19 +902,31 @@ def idle():
             distance = math.sqrt(dx*dx + dz*dz)
             
             if distance < WATER_REFILL_DISTANCE:
-                fire_truck['water'] = WATER_CAPACITY  # Instantly refill to full
+                # Refill water
+                fire_truck['water'] = WATER_CAPACITY
                 break
         
-        # Check for game over condition
-        # Check for game over condition
+        # Check for game over conditions
         houses_on_fire = sum(1 for house in houses if house['on_fire'])
         houses_destroyed = sum(1 for house in houses if house['health'] <= 0)
-
-    
+        
         # Game over if more than 50% houses are burnt/destroyed
         if houses_destroyed > NUM_HOUSES / 2:
-            game_over = True
-
+            lives -= 1
+            if lives <= 0:
+                game_over = True
+                notifications.append({
+                    'message': "Game Over: Too many houses destroyed!",
+                    'timestamp': current_time
+                })
+            else:
+                notifications.append({
+                    'message': f"Lost a life! {lives} remaining",
+                    'timestamp': current_time
+                })
+        
+        # Update people movement
+        update_people()
     
     glutPostRedisplay()
 
@@ -801,34 +954,38 @@ def showScreen():
     glPushMatrix()
     glLoadIdentity()
     
-    # Draw game stats
-    draw_text(10, 780, f"Time: {int(game_time)}s")
-    draw_text(10, 750, f"Houses Saved: {houses_saved}/{NUM_HOUSES}")
-    draw_text(10, 720, f"Water: {int(fire_truck['water'])}/{WATER_CAPACITY}")
+    # Top-right corner: All game stats
+    draw_text(750, 750, f"TIME: {int(TIME_LIMIT - game_time)}s")
+    draw_text(750, 700, f"SAVED: {houses_saved}/{NUM_HOUSES}")
+    draw_text(750, 650, f"SCORE: {score}")
+    draw_text(750, 600, f"LIVES: {lives}")
     
-    # Draw wind indicator
-    wind_text = f"Wind: {WIND_DIRECTION[0]:.1f}, {WIND_DIRECTION[2]:.1f} ({WIND_SPEED:.1f})"
-    draw_text(10, 690, wind_text)
+    # Water level (with color indicator)
+    water_pct = fire_truck['water'] / WATER_CAPACITY
+    water_color = (0.0, 0.7, 1.0) if water_pct > 0.3 else (1.0, 0.0, 0.0)
+    glColor3f(*water_color)
+    draw_text(750, 550, f"WATER: {int(fire_truck['water'])}")
+    glColor3f(1.0, 1.0, 1.0)
     
-    # Draw equipment status
-    y = 660
-    for equipment, status in fire_truck['equipment'].items():
-        draw_text(10, y, f"{equipment}: {int(status['condition'])}%")
-        y -= 30
-    
-    # Draw controls
-    draw_text(10, 100, "Controls:")
-    draw_text(10, 80, "Arrow Keys: Move/Turn")
-    draw_text(10, 60, "Space: Toggle water spray")
-    draw_text(10, 40, "V: Toggle view mode (FPS/Third-person)")
-    
+    # Center: Game state messages
     if not game_started:
-        draw_text(400, 400, "Press SPACE to start the game", GLUT_BITMAP_TIMES_ROMAN_24)
+        # Center the start message
+        text = "PRESS SPACE TO START"
+        text_width = len(text) * 12  # Approximate width of text
+        x_pos = (1000 - text_width) / 2
+        draw_text(x_pos, 400, text, GLUT_BITMAP_TIMES_ROMAN_24)
     elif game_over:
+        # Calculate final performance rating
+        calculate_performance_rating()
+        
+        # Center the game over message with performance rating
         if houses_saved == NUM_HOUSES:
-            draw_text(400, 400, "Victory! All houses saved!", GLUT_BITMAP_TIMES_ROMAN_24)
+            text = f"VICTORY! Score: {score} Rating: {performance_rating}%"
         else:
-            draw_text(400, 400, "Game Over!", GLUT_BITMAP_TIMES_ROMAN_24)
+            text = f"GAME OVER! Score: {score} Rating: {performance_rating}%"
+        text_width = len(text) * 12  # Approximate width of text
+        x_pos = (1000 - text_width) / 2
+        draw_text(x_pos, 400, text, GLUT_BITMAP_TIMES_ROMAN_24)
     
     glPopMatrix()
     glMatrixMode(GL_PROJECTION)
@@ -837,7 +994,6 @@ def showScreen():
     
     glutSwapBuffers()
 
-# Helper functions
 def init_houses():
     global houses
     houses = []
@@ -1099,6 +1255,89 @@ def update_structural_integrity():
                 house['fire_intensity'] = 0
                 house['smoke_level'] = 0
 
+def update_notifications(current_time):
+    global notifications, last_notification_time, NOTIFICATION_DURATION
+    
+    # Check for new notifications
+    if current_time - last_notification_time >= NOTIFICATION_DURATION:
+        # Generate a new notification
+        notification = {
+            'message': f"Time remaining: {int(TIME_LIMIT - game_time)}s",
+            'timestamp': current_time
+        }
+        notifications.append(notification)
+        last_notification_time = current_time
+
+def calculate_performance_rating():
+    global performance_rating
+    # Base rating on houses saved, time remaining, and lives
+    houses_ratio = houses_saved / NUM_HOUSES
+    time_ratio = (TIME_LIMIT - game_time) / TIME_LIMIT
+    lives_ratio = lives / MAX_LIVES
+    
+    # Weighted average
+    performance_rating = int((houses_ratio * 0.5 + time_ratio * 0.3 + lives_ratio * 0.2) * 100)
+
+def init_trees_and_people():
+    global trees, people
+    
+    # Initialize trees
+    trees = []
+    for _ in range(20):  # Add 20 trees
+        # Random position, avoiding roads and houses
+        while True:
+            x = random.uniform(-WORLD_SIZE + 10, WORLD_SIZE - 10)
+            z = random.uniform(-WORLD_SIZE + 10, WORLD_SIZE - 10)
+            
+            # Check if position is not on road or too close to houses
+            if (abs(x) > ROAD_WIDTH/2 + 5 and abs(z) > ROAD_WIDTH/2 + 5 and
+                not any(abs(x - h['position'][0]) < 10 and abs(z - h['position'][2]) < 10 for h in houses)):
+                break
+        
+        trees.append([x, 0, z])
+    
+    # Initialize people
+    people = []
+    for _ in range(10):  # Add 10 people
+        # Random position, avoiding roads and houses
+        while True:
+            x = random.uniform(-WORLD_SIZE + 10, WORLD_SIZE - 10)
+            z = random.uniform(-WORLD_SIZE + 10, WORLD_SIZE - 10)
+            
+            # Check if position is not on road or too close to houses
+            if (abs(x) > ROAD_WIDTH/2 + 5 and abs(z) > ROAD_WIDTH/2 + 5 and
+                not any(abs(x - h['position'][0]) < 10 and abs(z - h['position'][2]) < 10 for h in houses)):
+                break
+        
+        people.append({
+            'position': [x, 0, z],
+            'rotation': random.uniform(0, 360),
+            'speed': random.uniform(0.1, 0.3),
+            'target': [random.uniform(-WORLD_SIZE + 10, WORLD_SIZE - 10),
+                     0,
+                     random.uniform(-WORLD_SIZE + 10, WORLD_SIZE - 10)]
+        })
+
+def update_people():
+    for person in people:
+        # Move person towards their target
+        dx = person['target'][0] - person['position'][0]
+        dz = person['target'][2] - person['position'][2]
+        distance = math.sqrt(dx*dx + dz*dz)
+        
+        if distance < 1.0:  # If reached target, set new target
+            person['target'] = [random.uniform(-WORLD_SIZE + 10, WORLD_SIZE - 10),
+                              0,
+                              random.uniform(-WORLD_SIZE + 10, WORLD_SIZE - 10)]
+        else:
+            # Move towards target
+            speed = person['speed']
+            person['position'][0] += (dx/distance) * speed
+            person['position'][2] += (dz/distance) * speed
+            
+            # Update rotation to face movement direction
+            person['rotation'] = math.degrees(math.atan2(dx, dz))
+
 def main():
     global last_time, last_fire_pop_time, fires_occurred
     
@@ -1123,6 +1362,7 @@ def main():
     init_houses()
     init_water_stations()
     init_hazards()
+    init_trees_and_people()
     
     # Initialize timers and flags
     last_time = time.time()
