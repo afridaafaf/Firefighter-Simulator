@@ -480,8 +480,8 @@ def draw_shapes():
         
         # Calculate water spray target (in front of the truck)
         angle_rad = math.radians(rotation)
-        spray_start = [2.8 * math.sin(angle_rad), 1.5, 2.8 * math.cos(angle_rad)]
-        spray_target = [SPRAY_DISTANCE * math.sin(angle_rad), 1.0, SPRAY_DISTANCE * math.cos(angle_rad)]
+        spray_start = [1.0 * math.sin(1), 1.5, 1.0 * math.cos(1)]
+        spray_target = [SPRAY_DISTANCE * math.sin(1), 1.0, SPRAY_DISTANCE * math.cos(1)]
         
         # Direction vector
         direction = [
@@ -494,6 +494,7 @@ def draw_shapes():
         length = math.sqrt(direction[0]**2 + direction[1]**2 + direction[2]**2)
         if length > 0:
             direction = [direction[0]/length, direction[1]/length, direction[2]/length]
+        
         
         # Water particles
         particles = 100  # More particles for better visibility
@@ -610,10 +611,12 @@ def specialKeyListener(key, x, y):
             new_z = fire_truck['position'][2] + TRUCK_SPEED * math.cos(angle_rad)
             
             if not check_collision([new_x, 0, new_z]):
+                print("up collision")
                 fire_truck['position'][0] = new_x
                 fire_truck['position'][2] = new_z
         
         elif key == GLUT_KEY_DOWN:
+            
             # Calculate movement based on current rotation
             angle_rad = math.radians(fire_truck['rotation'])
             # Move backward
@@ -621,6 +624,7 @@ def specialKeyListener(key, x, y):
             new_z = fire_truck['position'][2] - TRUCK_SPEED * math.cos(angle_rad)
             
             if not check_collision([new_x, 0, new_z]):
+                print("down collision")
                 fire_truck['position'][0] = new_x
                 fire_truck['position'][2] = new_z
         
@@ -718,12 +722,12 @@ def idle():
                     dz = house['position'][2] - fire_truck['position'][2]
                     distance = math.sqrt(dx*dx + dz*dz)
                     
+                    
                     if distance < SPRAY_DISTANCE:
                         # Calculate water spray direction
                         angle_rad = math.radians(fire_truck['rotation'])
                         spray_dir_x = math.sin(angle_rad)
                         spray_dir_z = math.cos(angle_rad)
-                        
                         # Check if water is aimed at the house
                         house_dir_x = dx / distance if distance > 0 else 0
                         house_dir_z = dz / distance if distance > 0 else 0
@@ -906,16 +910,6 @@ def check_collision(new_pos):
             if distance < COLLISION_DISTANCE:
                 return True
     
-    # Check collision with hazards
-    for hazard in hazards:
-        if not hazard['cleared']:
-            hazard_pos = hazard['position']
-            dx = new_pos[0] - hazard_pos[0]
-            dz = new_pos[2] - hazard_pos[2]
-            distance = math.sqrt(dx**2 + dz**2)
-            
-            if distance < COLLISION_DISTANCE:
-                return True
     
     # Check world boundaries
     if (abs(new_pos[0]) > WORLD_SIZE - 5 or 
