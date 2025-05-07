@@ -15,16 +15,23 @@ GRID_LENGTH = 100  # Length of grid lines
 # Game parameters
 NUM_HOUSES = 8  # Number of houses in the game
 MAX_HEALTH = 100  # Maximum health of a house
-FIRE_DAMAGE = 0.2  # Fire damage per frame
-WATER_HEAL = 1.0  # Reduced water healing to make extinguishing take longer
+FIRE_DAMAGE = 0.04  # Fire damage per frame
+WATER_HEAL = 3.0  # Reduced water healing to make extinguishing take longer
 SPRAY_DISTANCE = 15.0  # Maximum distance to spray water
 FIRE_PROBABILITY = 0.001  # Increased for more frequent fires
-TRUCK_SPEED = 2.0  # Increased speed of the fire truck
+TRUCK_SPEED = 4.0  # Increased speed of the fire truck
 WORLD_SIZE = 100  # Size of the game world
-WATER_CAPACITY = 1000  # Maximum water capacity
-WATER_USAGE_RATE = 2  # Water usage per frame when spraying
+WATER_CAPACITY = 1500  # Maximum water capacity
+WATER_USAGE_RATE = 0.8  # Water usage per frame when spraying
 WATER_REFILL_RATE = 20  # Increased for faster refilling
 COLLISION_DISTANCE = 6.0  # Distance for collision detection
+WATER_REFILL_DISTANCE = 5.0  # Distance for automatic water refill
+FIRE_POP_INTERVAL = 6.0  # Minimum interval between fire pops in seconds
+
+# Add new constants for roads and water stations
+ROAD_WIDTH = 10.0
+ROAD_LENGTH = 80.0
+WATER_STATION_DISTANCE = 40.0  # Distance between water stations
 
 # New fire simulation parameters
 WIND_DIRECTION = [1.0, 0.0, 0.0]  # Initial wind direction
@@ -42,11 +49,6 @@ FIRE_TYPES = {
     'CLASS_C': {'color': (0.0, 0.0, 1.0), 'extinguisher': 'dry_chemical', 'spread_rate': 1.2},
     'CLASS_D': {'color': (1.0, 1.0, 0.0), 'extinguisher': 'dry_powder', 'spread_rate': 0.8}
 }
-
-# Add new constants for roads and water stations
-ROAD_WIDTH = 10.0
-ROAD_LENGTH = 80.0
-WATER_STATION_DISTANCE = 40.0  # Distance between water stations
 
 # Game state variables
 houses = []
@@ -73,12 +75,28 @@ hazards = []  # Environmental hazards
 smoke_particles = []  # Smoke particle system
 fire_particles = []  # Fire particle system
 wind_particles = []  # Wind visualization particles
+last_fire_pop_time = 0  # Track the last time a fire popped up
+fires_occurred = False  # Track if any fires have occurred during gameplay
 
-# Add new camera-related variables at the top with other game parameters
+# Add new camera-related variables
 view_mode_fps = False  # False for third-person, True for first-person
 cam_distance = 30.0  # Distance for third-person view
 cam_elevation = 25.0  # Height for third-person view
 cam_rotation = 0  # Camera rotation around the truck
+
+def pop_random_fire():
+    global fires_occurred
+    # Find houses that are not on fire and not destroyed
+    valid_houses = [h for h in houses if not h['on_fire'] and h['health'] > 0]
+    
+    if valid_houses:
+        # Select a random house to set on fire
+        house = random.choice(valid_houses)
+        house['on_fire'] = True
+        house['fire_intensity'] = 0.3  # Start with moderate intensity
+        house['fire_type'] = random.choice(list(FIRE_TYPES.keys()))
+        fires_occurred = True
+        print(f"Fire started at house at position {house['position']}")
 
 def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
     glColor3f(1, 1, 1)
@@ -532,7 +550,7 @@ def draw_shapes():
 
 def keyboardListener(key, x, y):
     global game_started, game_over, score, game_time, houses_saved, fire_truck
-    global view_mode_fps, cam_rotation, cam_distance, cam_elevation
+    global view_mode_fps, cam_rotation, cam_distance, cam_elevation, last_time
     
     if game_over:
         if key == b'r' or key == b'R':
@@ -561,19 +579,6 @@ def keyboardListener(key, x, y):
                 fire_truck['spraying'] = not fire_truck['spraying']
         elif key == b'v' or key == b'V':  # Toggle view mode
             view_mode_fps = not view_mode_fps
-        elif key == b'q' or key == b'Q':  # Q key for refilling water
-            if game_started and not game_over:
-                # Check if near any water station
-                for station in water_stations:
-                    dx = station['position'][0] - fire_truck['position'][0]
-                    dz = station['position'][2] - fire_truck['position'][2]
-                    distance = math.sqrt(dx*dx + dz*dz)
-                    
-                    if distance < COLLISION_DISTANCE:
-                        # Refill water
-                        fire_truck['water'] = WATER_CAPACITY
-                        print("Water refilled!")
-                        break
         elif key == b'\x1b':  # ESC key
             sys.exit()
     
@@ -676,7 +681,7 @@ def setupCamera():
         )
 
 def idle():
-    global game_time, last_time, houses_saved, game_over, fire_truck
+    global game_time, last_time, houses_saved, game_over, fire_truck, last_fire_pop_time
     
     # Calculate delta time
     current_time = time.time()
@@ -696,6 +701,12 @@ def idle():
         # Update particles
         update_particles()
         
+        # Random fire popping with minimum interval
+        if current_time - last_fire_pop_time >= FIRE_POP_INTERVAL:
+            if random.random() < 0.1:  # 10% chance to start a new fire
+                pop_random_fire()
+                last_fire_pop_time = current_time
+        
         # Update fire truck water level if spraying
         if fire_truck['spraying'] and fire_truck['water'] > 0:
             fire_truck['water'] = max(0, fire_truck['water'] - WATER_USAGE_RATE)
@@ -708,36 +719,57 @@ def idle():
                     distance = math.sqrt(dx*dx + dz*dz)
                     
                     if distance < SPRAY_DISTANCE:
-                        # Check if we're using the correct extinguisher
-                        current_equipment = 'water_hose'  # Default to water hose
-                        if fire_truck['equipment'][current_equipment]['condition'] > 0:
-                            # Reduce fire intensity more slowly
-                            house['fire_intensity'] = max(0, house['fire_intensity'] - WATER_HEAL * delta_time * 0.5)
-                            
-                            # If fire is extinguished
-                            if house['fire_intensity'] <= 0:
-                                house['on_fire'] = False
-                                house['fire_intensity'] = 0
-                                houses_saved += 1
-                            
-                            # Degrade equipment
-                            fire_truck['equipment'][current_equipment]['condition'] -= 0.1
-                            if fire_truck['equipment'][current_equipment]['condition'] <= 0:
-                                fire_truck['equipment'][current_equipment]['effectiveness'] = 0
+                        # Calculate water spray direction
+                        angle_rad = math.radians(fire_truck['rotation'])
+                        spray_dir_x = math.sin(angle_rad)
+                        spray_dir_z = math.cos(angle_rad)
+                        
+                        # Check if water is aimed at the house
+                        house_dir_x = dx / distance if distance > 0 else 0
+                        house_dir_z = dz / distance if distance > 0 else 0
+                        
+                        # Calculate dot product to check if truck is facing the house
+                        dot_product = house_dir_x * spray_dir_x + house_dir_z * spray_dir_z
+                        
+                        # If water is aimed at the house (dot product > 0.7 means angle < ~45 degrees)
+                        if dot_product > 0.7:
+                            # Check if we're using the correct extinguisher
+                            current_equipment = 'water_hose'  # Default to water hose
+                            if fire_truck['equipment'][current_equipment]['condition'] > 0:
+                                # Reduce fire intensity more slowly
+                                house['fire_intensity'] = max(0, house['fire_intensity'] - WATER_HEAL * delta_time * 0.5)
+                                
+                                # If fire is extinguished
+                                if house['fire_intensity'] <= 0:
+                                    house['on_fire'] = False
+                                    house['fire_intensity'] = 0
+                                    houses_saved += 1
+                                
+                                # Degrade equipment
+                                fire_truck['equipment'][current_equipment]['condition'] -= 0.1
+                                if fire_truck['equipment'][current_equipment]['condition'] <= 0:
+                                    fire_truck['equipment'][current_equipment]['effectiveness'] = 0
         
-        # Check for water refill
+        # Automatic water refill when near water stations
         for station in water_stations:
             dx = station['position'][0] - fire_truck['position'][0]
             dz = station['position'][2] - fire_truck['position'][2]
             distance = math.sqrt(dx*dx + dz*dz)
             
-            if distance < COLLISION_DISTANCE:
-                fire_truck['water'] = min(WATER_CAPACITY, fire_truck['water'] + WATER_REFILL_RATE * delta_time)
+            if distance < WATER_REFILL_DISTANCE:
+                fire_truck['water'] = WATER_CAPACITY  # Instantly refill to full
+                break
         
         # Check for game over condition
+        # Check for game over condition
         houses_on_fire = sum(1 for house in houses if house['on_fire'])
-        if houses_on_fire == 0 and any(house['health'] > 0 for house in houses):
+        houses_destroyed = sum(1 for house in houses if house['health'] <= 0)
+
+    
+        # Game over if more than 50% houses are burnt/destroyed
+        if houses_destroyed > NUM_HOUSES / 2:
             game_over = True
+
     
     glutPostRedisplay()
 
@@ -784,10 +816,11 @@ def showScreen():
     draw_text(10, 100, "Controls:")
     draw_text(10, 80, "Arrow Keys: Move/Turn")
     draw_text(10, 60, "Space: Toggle water spray")
-    draw_text(10, 40, "Q: Refill water (when near station)")
-    draw_text(10, 20, "V: Toggle view mode (FPS/Third-person)")
+    draw_text(10, 40, "V: Toggle view mode (FPS/Third-person)")
     
-    if game_over:
+    if not game_started:
+        draw_text(400, 400, "Press SPACE to start the game", GLUT_BITMAP_TIMES_ROMAN_24)
+    elif game_over:
         if houses_saved == NUM_HOUSES:
             draw_text(400, 400, "Victory! All houses saved!", GLUT_BITMAP_TIMES_ROMAN_24)
         else:
@@ -816,18 +849,22 @@ def init_houses():
         (15, -60), (15, -40), (15, -20), (15, 20), (15, 40), (15, 60),  # Top side
     ]
     
-    for i, (x, z) in enumerate(house_positions):
+    # Select random positions for the initial houses
+    selected_positions = random.sample(house_positions, NUM_HOUSES)
+    
+    for i, (x, z) in enumerate(selected_positions):
         # Random fire type for the house
         fire_type = random.choice(list(FIRE_TYPES.keys()))
         
+        # Start with no houses on fire
         house = {
             'position': [x, 0, z],
             'health': MAX_HEALTH,
             'structural_integrity': MAX_HEALTH,
-            'on_fire': True,  # Start with houses on fire
-            'fire_intensity': 0.5,  # Start with higher fire intensity
+            'on_fire': False,  # Start with no houses on fire
+            'fire_intensity': 0,
             'fire_type': fire_type,
-            'smoke_level': 0.3,  # Start with some smoke
+            'smoke_level': 0,
             'flammability': random.uniform(0.5, 1.0),
             'fire_spread_timer': 0,
             'fire_spread_cooldown': random.uniform(1.0, 3.0),
@@ -1008,7 +1045,7 @@ def update_fire_spread():
     for house in houses:
         if house['on_fire']:
             # Update fire intensity - make it grow over time
-            house['fire_intensity'] = min(1.0, house['fire_intensity'] + 0.005)
+            house['fire_intensity'] = min(1.0, house['fire_intensity'] + 0.001)
             
             # Generate more fire and smoke particles
             if random.random() < 0.5:  # Increased chance for particles
@@ -1069,7 +1106,7 @@ def update_structural_integrity():
                 house['smoke_level'] = 0
 
 def main():
-    global last_time
+    global last_time, last_fire_pop_time, fires_occurred
     
     glutInit(sys.argv)
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH)
@@ -1093,6 +1130,11 @@ def main():
     init_water_stations()
     init_hazards()
     
+    # Initialize timers and flags
+    last_time = time.time()
+    last_fire_pop_time = time.time()
+    fires_occurred = False
+    
     # Register callbacks
     glutDisplayFunc(showScreen)
     glutKeyboardFunc(keyboardListener)
@@ -1102,8 +1144,6 @@ def main():
     
     # Enable key repeat
     glutSetKeyRepeat(GLUT_KEY_REPEAT_ON)
-    
-    last_time = time.time()
     
     glutMainLoop()
 
