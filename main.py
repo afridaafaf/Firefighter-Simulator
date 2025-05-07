@@ -7,6 +7,8 @@ import time
 import sys
 import numpy as np
 
+scene_time = 0.0  # 0.0 to 24.0, where 0 is midnight and 12 is noon
+
 # Camera-related variables
 camera_pos = (0, 30, 50)  # Increased height and distance
 fovY = 60  # Field of view
@@ -720,13 +722,14 @@ def setupCamera():
         )
 
 def idle():
-    global game_time, last_time, houses_saved, game_over, fire_truck, last_fire_pop_time
+    global game_time, last_time, houses_saved, game_over, fire_truck, last_fire_pop_time, scene_time
     global notifications, last_notification_time, score, lives
     
     # Calculate delta time
     current_time = time.time()
     delta_time = current_time - last_time
     last_time = current_time
+    scene_time = (scene_time + 0.01) % 24.0
     
     if not game_over and game_started:
         game_time += delta_time
@@ -839,11 +842,31 @@ def idle():
     
     glutPostRedisplay()
 
+def get_day_factor():
+    # Returns 1.0 at noon, 0.0 at midnight
+    # Shift so 6.0 is sunrise, 18.0 is sunset
+    return max(0.0, math.cos((scene_time - 6) / 12.0 * math.pi))
+
 def showScreen():
     global camera_pos
     
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     glLoadIdentity()
+
+    # Set up lighting
+    day_factor = get_day_factor()
+    # Sky color: blue in day, dark at night
+    sky_color = (
+        0.53 * day_factor + 0.05 * (1 - day_factor),  # Reddish at night
+        0.81 * day_factor + 0.02 * (1 - day_factor),
+        0.92 * day_factor + 0.10 * (1 - day_factor),
+        1.0
+    )
+    glClearColor(*sky_color)
+    # Light intensity: bright at day, dim at night
+    light_intensity = 0.5 + 0.5 * day_factor  # 0.5 at night, 1.0 at noon
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, [light_intensity]*3 + [1.0])
+    glLightfv(GL_LIGHT0, GL_AMBIENT, [0.2 + 0.3*day_factor]*3 + [1.0])
     
     # Setup camera
     setupCamera()
@@ -868,6 +891,8 @@ def showScreen():
     draw_text(750, 700, f"SAVED: {houses_saved}/{NUM_HOUSES}")
     draw_text(750, 650, f"SCORE: {score}")
     draw_text(750, 600, f"LIVES: {lives}")
+    draw_text(10, 60, f"Time: {int(scene_time):02d}:00")
+
     
     # Water level (with color indicator)
     water_pct = fire_truck['water'] / WATER_CAPACITY
