@@ -330,6 +330,36 @@ def draw_ground():
     glVertex3f(-WORLD_SIZE, 0, WORLD_SIZE)
     glEnd()
 
+def draw_all_hazards():
+    for hazard in hazards:
+        if not hazard['cleared']:
+            draw_hazard(hazard)
+
+def draw_hazard(hazard):
+    x, y, z = hazard['position']
+    glPushMatrix()
+    glTranslatef(x, y, z)
+    t = hazard['type']
+    if t == 'fallen_tree':
+        glColor3f(0.4, 0.2, 0.1)
+        glRotatef(90, 0, 0, 1)
+        glutSolidCylinder(1, 8, 8, 2)
+    elif t == 'power_line':
+        glColor3f(0.8, 0.8, 0.8)
+        glScalef(0.3, 3, 0.3)
+        glutSolidCube(1)
+    elif t == 'debris':
+        glColor3f(0.5, 0.5, 0.5)
+        glutSolidCube(2)
+    elif t == 'vehicle':
+        glColor3f(0.7, 0.1, 0.1)
+        glScalef(1, 0.5, 2)
+        glutSolidCube(2)
+    elif t == 'collapsed_structure':
+        glColor3f(0.7, 0.5, 0.3)
+        glutSolidCube(3)
+    glPopMatrix()
+
 def draw_all_roads():
     draw_road()
 
@@ -579,6 +609,7 @@ def draw_shapes():
     draw_all_water_stations()
     draw_all_houses()
     draw_all_trees()
+    draw_all_hazards()
     draw_all_people()
     draw_fire_truck_and_effects()
 
@@ -620,6 +651,8 @@ def keyboardListener(key, x, y):
             difficulties = list(DIFFICULTY_LEVELS.keys())
             current_index = difficulties.index(current_difficulty)
             current_difficulty = difficulties[(current_index + 1) % len(difficulties)]
+        elif key == b'e' or key == b'E':  # 'E' to clear hazard
+            clear_hazard()
         elif key == b'\x1b':  # ESC key
             sys.exit()
     
@@ -971,12 +1004,11 @@ def init_water_stations():
 def init_hazards():
     global hazards
     hazards = []
-    
-    # Add fallen trees, power lines, etc.
-    for _ in range(5):
+    hazard_types = ['fallen_tree', 'power_line', 'debris', 'vehicle', 'collapsed_structure']
+    for _ in range(7):  # Add as many as you want
         x = random.randint(-WORLD_SIZE//2 + 5, WORLD_SIZE//2 - 5)
         z = random.randint(-WORLD_SIZE//2 + 5, WORLD_SIZE//2 - 5)
-        hazard_type = random.randint(0, 2)  # 0: fallen tree, 1: power line, 2: debris
+        hazard_type = random.choice(hazard_types)
         hazards.append({'position': [x, 0, z], 'type': hazard_type, 'cleared': False})
 
 def check_collision(new_pos):
@@ -997,6 +1029,16 @@ def check_collision(new_pos):
         distance = math.sqrt(dx**2 + dz**2)
         if distance < COLLISION_DISTANCE:
             return True
+        
+        # Check collision with hazards
+    for hazard in hazards:
+        if not hazard['cleared']:
+            hx, hy, hz = hazard['position']
+            dx = new_pos[0] - hx
+            dz = new_pos[2] - hz
+            distance = math.sqrt(dx**2 + dz**2)
+            if distance < COLLISION_DISTANCE:
+                return True
 
     # Check world boundaries
     if (abs(new_pos[0]) > WORLD_SIZE - 5 or
@@ -1282,6 +1324,61 @@ def update_people():
             
             # Update rotation to face movement direction
             person['rotation'] = math.degrees(math.atan2(dx, dz))
+
+def clear_hazard():
+    """
+    Attempts to clear the nearest uncleared hazard within range of the fire truck.
+    Optionally, you can add more logic for different hazard types or require a 'hold' action.
+    """
+    global hazards, fire_truck, score, notifications
+
+    CLEAR_DISTANCE = COLLISION_DISTANCE + 2  # Allow some leeway for clearing
+
+    # Find all uncleared hazards within range
+    candidates = []
+    for hazard in hazards:
+        if not hazard['cleared']:
+            hx, hy, hz = hazard['position']
+            dx = fire_truck['position'][0] - hx
+            dz = fire_truck['position'][2] - hz
+            distance = math.sqrt(dx**2 + dz**2)
+            if distance < CLEAR_DISTANCE:
+                candidates.append((distance, hazard))
+
+    if candidates:
+        # Pick the closest hazard
+        candidates.sort(key=lambda tup: tup[0])
+        _, nearest_hazard = candidates[0]
+        nearest_hazard['cleared'] = True
+
+        # Optional: Award points or give feedback based on hazard type
+        hazard_type = nearest_hazard['type']
+        points = 0
+        msg = "Cleared obstacle!"
+        if hazard_type == 'fallen_tree':
+            points = 100
+            msg = "Fallen tree cleared!"
+        elif hazard_type == 'power_line':
+            points = 150
+            msg = "Power line hazard cleared!"
+        elif hazard_type == 'debris':
+            points = 80
+            msg = "Debris cleared!"
+        elif hazard_type == 'vehicle':
+            points = 120
+            msg = "Abandoned vehicle cleared!"
+        elif hazard_type == 'collapsed_structure':
+            points = 200
+            msg = "Collapsed structure cleared!"
+
+        score += points
+        notifications.append({'message': f"{msg} (+{points} pts)", 'timestamp': time.time()})
+        return True  # Successfully cleared a hazard
+
+    else:
+        # Optional: Feedback if no hazard is in range
+        notifications.append({'message': "No obstacle nearby to clear!", 'timestamp': time.time()})
+        return False
 
 def main():
     global last_time, last_fire_pop_time, fires_occurred
