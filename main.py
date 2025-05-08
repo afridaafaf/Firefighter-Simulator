@@ -24,7 +24,7 @@ SPRAY_DISTANCE = 15.0  # Maximum distance to spray water
 FIRE_PROBABILITY = 0.001  # Increased for more frequent fires
 TRUCK_SPEED = 4.0  # Increased speed of the fire truck
 WORLD_SIZE = 100  # Size of the game world
-WATER_CAPACITY = 1500  # Maximum water capacity
+WATER_CAPACITY = 120  # Maximum water capacity
 WATER_USAGE_RATE = 0.8  # Water usage per frame when spraying
 WATER_REFILL_RATE = 20  # Increased for faster refilling
 COLLISION_DISTANCE = 6.0  # Distance for collision detection
@@ -79,7 +79,6 @@ fire_truck = {
     }
 }
 
-current_equipment = 'water_hose'  # Default tool
 tool_names = {
     'water_hose': 'Standard Hose',
     'foam_sprayer': 'Foam Sprayer',
@@ -817,6 +816,7 @@ def idle():
 
         # Update fire truck water level if spraying
         if fire_truck['spraying'] and fire_truck['water'] > 0:
+            fire_truck['water'] = max(0, fire_truck['water'] - WATER_USAGE_RATE)
             for house in houses:
                 if house['on_fire']:
                     dx = house['position'][0] - fire_truck['position'][0]
@@ -864,6 +864,7 @@ def idle():
                                         'timestamp': time.time()
                                     })
                                     idle.last_wrong_tool_time = time.time()
+
 
         # Automatic water refill when near water stations
         for station in water_stations:
@@ -955,22 +956,40 @@ def showScreen():
     glLoadIdentity()
     
     # Left side: All game stats
+
+    # Water level calculation
+    water_level = int(fire_truck['water'])
+    water_pct = fire_truck['water'] / WATER_CAPACITY
+
+    # Choose color for water level (blue if safe, red if low)
+    if water_level > 60:
+        glColor3f(0.0, 0.7, 1.0)  # Blue
+    else:
+        glColor3f(1.0, 0.0, 0.0)  # Red
+
+    draw_text(10, 550, f"WATER: {water_level}")
+
+    # Show warning if water is low
+    if water_level <= 60:
+        glColor3f(1.0, 0.0, 0.0)  # Bright red for warning
+        # draw_text(10, 520, "REFILL WATER SOON!", GLUT_BITMAP_HELVETICA_18)
+
+    # The rest of your HUD (keep yellow for other stats)
     glColor3f(1.0, 1.0, 0.0)
     draw_text(10, 750, f"TIME REMAINING: {int(TIME_LIMIT - game_time)}s")
     draw_text(10, 700, f"SAVED: {houses_saved}/{NUM_HOUSES}")
     draw_text(10, 650, f"SCORE: {score}")
     draw_text(10, 600, f"LIVES: {lives}")
-    draw_text(10, 550, f"WATER: {int(fire_truck['water'])}")
     draw_text(10, 500, f"TOOL: {tool_names.get(current_equipment, 'Unknown')}")
     draw_text(10, 60, f"CLOCK: {int(scene_time):02d}:00")
 
-    
-    # Water level (with color indicator)
-    water_pct = fire_truck['water'] / WATER_CAPACITY
-    water_color = (0.0, 0.7, 1.0) if water_pct > 0.3 else (1.0, 0.0, 0.0)
-    glColor3f(*water_color)
-    # draw_text(750, 550, f"WATER: {int(fire_truck['water'])}")
-    glColor3f(1.0, 1.0, 1.0)
+    # Show recent notifications (last 3, for example)
+    glColor3f(1.0, 0.5, 0.0)  # Orange for notifications
+    y = 400  # Start near the center or top
+    for n in notifications[-3:]:
+        draw_text(20, y, n['message'])
+        y -= 30  # Move down for each message
+
     
     # Center: Game state messages
     if not game_started:
@@ -1293,14 +1312,14 @@ def update_notifications(current_time):
     global notifications, last_notification_time, NOTIFICATION_DURATION
     
     # Check for new notifications
-    if current_time - last_notification_time >= NOTIFICATION_DURATION:
-        # Generate a new notification
-        notification = {
-            'message': f"Time remaining: {int(TIME_LIMIT - game_time)}s",
-            'timestamp': current_time
-        }
-        notifications.append(notification)
-        last_notification_time = current_time
+    # if current_time - last_notification_time >= NOTIFICATION_DURATION:
+    #     # Generate a new notification
+    #     # notification = {
+    #     #     'message': f"Time remaining: {int(TIME_LIMIT - game_time)}s",
+    #     #     'timestamp': current_time
+    #     # }
+    #     # notifications.append(notification)
+    #     last_notification_time = current_time
 
 def calculate_performance_rating():
     global performance_rating
