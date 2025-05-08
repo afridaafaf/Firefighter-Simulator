@@ -8,6 +8,7 @@ import sys
 import numpy as np
 
 scene_time = 0.0  # 0.0 to 24.0, where 0 is midnight and 12 is noon
+last_houses_destroyed = 0  # Track destroyed houses for life loss
 
 # Camera-related variables
 camera_pos = (0, 30, 50)  # Increased height and distance
@@ -724,123 +725,113 @@ def setupCamera():
 def idle():
     global game_time, last_time, houses_saved, game_over, fire_truck, last_fire_pop_time, scene_time
     global notifications, last_notification_time, score, lives
-    
+    global last_houses_destroyed  # Add this global tracker
+
     # Calculate delta time
     current_time = time.time()
     delta_time = current_time - last_time
     last_time = current_time
     scene_time = (scene_time + 0.01) % 24.0
-    
+
     if not game_over and game_started:
         game_time += delta_time
-        
+
         # Update score based on time remaining
         score += int(SCORE_PER_SECOND * delta_time)
-        
-        # Check time limit
+
+        # --- 1. Game over if time runs out ---
         if game_time >= DIFFICULTY_LEVELS[current_difficulty]['time_limit']:
             game_over = True
             notifications.append({
-                'message': "Time's up!",
+                'message': "Game Over: Time's up!",
                 'timestamp': current_time
             })
-        
-        # Update wind
+
+        # Update wind, fire, particles, notifications, etc.
         update_wind()
-        
-        # Update fire spread and structural integrity
         update_fire_spread()
         update_structural_integrity()
-        
-        # Update particles
         update_particles()
-        
-        # Update notifications
         update_notifications(current_time)
-        
+
         # Random fire popping with minimum interval
         if current_time - last_fire_pop_time >= FIRE_POP_INTERVAL:
-            if random.random() < 0.1 * DIFFICULTY_LEVELS[current_difficulty]['fire_rate']:  # Adjust fire rate based on difficulty
+            if random.random() < 0.1 * DIFFICULTY_LEVELS[current_difficulty]['fire_rate']:
                 pop_random_fire()
                 last_fire_pop_time = current_time
-        
+
         # Update fire truck water level if spraying
         if fire_truck['spraying'] and fire_truck['water'] > 0:
             fire_truck['water'] = max(0, fire_truck['water'] - WATER_USAGE_RATE)
-            
-            # Check for houses in range to extinguish
             for house in houses:
                 if house['on_fire']:
                     dx = house['position'][0] - fire_truck['position'][0]
                     dz = house['position'][2] - fire_truck['position'][2]
                     distance = math.sqrt(dx*dx + dz*dz)
-                    
                     if distance < SPRAY_DISTANCE:
-                        # Calculate water spray direction
                         angle_rad = math.radians(fire_truck['rotation'])
                         spray_dir_x = math.sin(angle_rad)
                         spray_dir_z = math.cos(angle_rad)
-                        # Check if water is aimed at the house
                         house_dir_x = dx / distance if distance > 0 else 0
                         house_dir_z = dz / distance if distance > 0 else 0
-                        
-                        # Calculate dot product to check if truck is facing the house
                         dot_product = house_dir_x * spray_dir_x + house_dir_z * spray_dir_z
-                        
-                        # If water is aimed at the house (dot product > 0.7 means angle < ~45 degrees)
                         if dot_product > 0.7:
-                            # Check if we're using the correct extinguisher
-                            current_equipment = 'water_hose'  # Default to water hose
+                            current_equipment = 'water_hose'
                             if fire_truck['equipment'][current_equipment]['condition'] > 0:
-                                # Reduce fire intensity more slowly
                                 house['fire_intensity'] = max(0, house['fire_intensity'] - WATER_HEAL * delta_time * 0.5)
-                                
-                                # If fire is extinguished
                                 if house['fire_intensity'] <= 0:
                                     house['on_fire'] = False
                                     house['fire_intensity'] = 0
                                     houses_saved += 1
-                                    score += SCORE_PER_HOUSE  # Add points for saving a house
-                                
-                                # Degrade equipment
+                                    score += SCORE_PER_HOUSE
                                 fire_truck['equipment'][current_equipment]['condition'] -= 0.1
                                 if fire_truck['equipment'][current_equipment]['condition'] <= 0:
                                     fire_truck['equipment'][current_equipment]['effectiveness'] = 0
-        
+
         # Automatic water refill when near water stations
         for station in water_stations:
             dx = station['position'][0] - fire_truck['position'][0]
             dz = station['position'][2] - fire_truck['position'][2]
             distance = math.sqrt(dx*dx + dz*dz)
-            
             if distance < WATER_REFILL_DISTANCE:
-                # Refill water
                 fire_truck['water'] = WATER_CAPACITY
                 break
-        
-        # Check for game over conditions
-        houses_on_fire = sum(1 for house in houses if house['on_fire'])
+
         houses_destroyed = sum(1 for house in houses if house['health'] <= 0)
-        
-        # Game over if more than 50% houses are burnt/destroyed
-        if houses_destroyed > NUM_HOUSES / 2:
-            lives -= 1
-            if lives <= 0:
-                game_over = True
-                notifications.append({
-                    'message': "Game Over: Too many houses destroyed!",
-                    'timestamp': current_time
-                })
-            else:
-                notifications.append({
-                    'message': f"Lost a life! {lives} remaining",
-                    'timestamp': current_time
-                })
-        
+        if not hasattr(idle, "last_houses_destroyed"):
+            idle.last_houses_destroyed = 0  # static variable for tracking
+
+        if houses_destroyed > NUM_HOUSES / 2 and not game_over:
+            # Only lose a life when a new house is destroyed past the threshold
+            if houses_destroyed > idle.last_houses_destroyed:
+                lives -= 1
+                print("Lives decremented! Now:", lives)  
+                if lives <= 0:
+                    game_over = True
+                    notifications.append({
+                        'message': "Game Over: All lives lost!",
+                        'timestamp': current_time
+                    })
+                else:
+                    notifications.append({
+                        'message': f"Lost a life! {lives} remaining",
+                        'timestamp': current_time
+                    })
+            idle.last_houses_destroyed = houses_destroyed
+
+        # If lives reach zero (from any cause), game over
+        if lives <= 0 and not game_over:
+            game_over = True
+            notifications.append({
+                'message': "Game Over: All lives lost!",
+                'timestamp': current_time
+            })
+
         # Update people movement
         update_people()
-    
+
     glutPostRedisplay()
+
 
 def get_day_factor():
     # Returns 1.0 at noon, 0.0 at midnight
