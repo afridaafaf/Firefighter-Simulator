@@ -996,17 +996,24 @@ def check_collision(new_pos):
             dx = new_pos[0] - house_pos[0]
             dz = new_pos[2] - house_pos[2]
             distance = math.sqrt(dx**2 + dz**2)
-            
             if distance < COLLISION_DISTANCE:
                 return True
-    
-    
+
+    # Check collision with trees
+    for tree_pos in trees:
+        dx = new_pos[0] - tree_pos[0]
+        dz = new_pos[2] - tree_pos[2]
+        distance = math.sqrt(dx**2 + dz**2)
+        if distance < COLLISION_DISTANCE:
+            return True
+
     # Check world boundaries
-    if (abs(new_pos[0]) > WORLD_SIZE - 5 or 
+    if (abs(new_pos[0]) > WORLD_SIZE - 5 or
         abs(new_pos[2]) > WORLD_SIZE - 5):
         return True
-    
+
     return False
+
 
 def create_fire_particle(position, fire_type):
     return {
