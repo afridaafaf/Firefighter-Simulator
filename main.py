@@ -24,7 +24,7 @@ SPRAY_DISTANCE = 15.0  # Maximum distance to spray water
 FIRE_PROBABILITY = 0.001  # Increased for more frequent fires
 TRUCK_SPEED = 4.0  # Increased speed of the fire truck
 WORLD_SIZE = 100  # Size of the game world
-WATER_CAPACITY = 120  # Maximum water capacity
+WATER_CAPACITY = 5000  # Maximum water capacity
 WATER_USAGE_RATE = 0.8  # Water usage per frame when spraying
 WATER_REFILL_RATE = 20  # Increased for faster refilling
 COLLISION_DISTANCE = 6.0  # Distance for collision detection
@@ -669,7 +669,7 @@ def keyboardListener(key, x, y):
             current_difficulty = difficulties[(current_index + 1) % len(difficulties)]
         elif key == b'e' or key == b'E':  # 'E' to clear hazard
             clear_hazard()
-        elif key == b'\t':  # Tab key cycles tools
+        elif key == b'x' or key == b'X':  # Tab key cycles tools
             tool_index = (tool_index + 1) % len(tool_keys)
             current_equipment = tool_keys[tool_index]
             notifications.append({'message': f"Selected: {tool_names.get(current_equipment, 'Unknown')}", 'timestamp': time.time()})
