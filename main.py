@@ -78,6 +78,19 @@ fire_truck = {
         'dry_powder': {'condition': 100, 'effectiveness': 1.0}
     }
 }
+
+current_equipment = 'water_hose'  # Default tool
+tool_names = {
+    'water_hose': 'Standard Hose',
+    'foam_sprayer': 'Foam Sprayer',
+    'dry_chemical': 'Dry Chemical Extinguisher',
+    'dry_powder': 'Dry Powder Extinguisher',
+    'fire_axe': 'Fire Axe'
+}
+tool_keys = ['water_hose', 'foam_sprayer', 'dry_chemical', 'dry_powder', 'fire_axe']
+tool_index = 0
+current_equipment = tool_keys[tool_index]
+
 score = 0
 game_over = False
 game_time = 0
@@ -123,7 +136,7 @@ def pop_random_fire():
         print(f"Fire started at house at position {house['position']}")
 
 def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
-    glColor3f(1, 1, 1)
+
     glMatrixMode(GL_PROJECTION)
     glPushMatrix()
     glLoadIdentity()
@@ -618,6 +631,7 @@ def keyboardListener(key, x, y):
     global game_started, game_over, score, game_time, houses_saved, fire_truck
     global view_mode_fps, cam_rotation, cam_distance, cam_elevation, last_time
     global current_difficulty, lives
+    global tool_index, current_equipment
     
     if game_over:
         if key == b'r' or key == b'R':
@@ -635,6 +649,9 @@ def keyboardListener(key, x, y):
             lives = MAX_LIVES
             game_over = False
             game_started = False
+            current_equipment = 'water_hose'
+            tool_index = 0
+            current_equipment = tool_keys[tool_index]
     else:
         if key == b' ':  # Space bar
             if not game_started:
@@ -653,6 +670,10 @@ def keyboardListener(key, x, y):
             current_difficulty = difficulties[(current_index + 1) % len(difficulties)]
         elif key == b'e' or key == b'E':  # 'E' to clear hazard
             clear_hazard()
+        elif key == b'\t':  # Tab key cycles tools
+            tool_index = (tool_index + 1) % len(tool_keys)
+            current_equipment = tool_keys[tool_index]
+            notifications.append({'message': f"Selected: {tool_names.get(current_equipment, 'Unknown')}", 'timestamp': time.time()})
         elif key == b'\x1b':  # ESC key
             sys.exit()
     
@@ -759,6 +780,7 @@ def idle():
     global game_time, last_time, houses_saved, game_over, fire_truck, last_fire_pop_time, scene_time
     global notifications, last_notification_time, score, lives
     global last_houses_destroyed  # Add this global tracker
+    global current_difficulty, lives, current_equipment, tool_index
 
     # Calculate delta time
     current_time = time.time()
@@ -795,7 +817,6 @@ def idle():
 
         # Update fire truck water level if spraying
         if fire_truck['spraying'] and fire_truck['water'] > 0:
-            fire_truck['water'] = max(0, fire_truck['water'] - WATER_USAGE_RATE)
             for house in houses:
                 if house['on_fire']:
                     dx = house['position'][0] - fire_truck['position'][0]
@@ -809,8 +830,19 @@ def idle():
                         house_dir_z = dz / distance if distance > 0 else 0
                         dot_product = house_dir_x * spray_dir_x + house_dir_z * spray_dir_z
                         if dot_product > 0.7:
-                            current_equipment = 'water_hose'
-                            if fire_truck['equipment'][current_equipment]['condition'] > 0:
+                            # --- ENFORCE CORRECT TOOL ---
+                            fire_type = house['fire_type']
+                            required_equipment = None
+                            if fire_type == 'CLASS_A':
+                                required_equipment = 'water_hose'
+                            elif fire_type == 'CLASS_B':
+                                required_equipment = 'foam_sprayer'
+                            elif fire_type == 'CLASS_C':
+                                required_equipment = 'dry_chemical'
+                            elif fire_type == 'CLASS_D':
+                                required_equipment = 'dry_powder'
+                            # Check if correct tool is selected
+                            if current_equipment == required_equipment and fire_truck['equipment'][current_equipment]['condition'] > 0:
                                 house['fire_intensity'] = max(0, house['fire_intensity'] - WATER_HEAL * delta_time * 0.5)
                                 if house['fire_intensity'] <= 0:
                                     house['on_fire'] = False
@@ -820,6 +852,18 @@ def idle():
                                 fire_truck['equipment'][current_equipment]['condition'] -= 0.1
                                 if fire_truck['equipment'][current_equipment]['condition'] <= 0:
                                     fire_truck['equipment'][current_equipment]['effectiveness'] = 0
+                            else:
+                                # Wrong tool: show notification (only once per attempt)
+                                if not hasattr(idle, "last_wrong_tool_time"):
+                                    idle.last_wrong_tool_time = 0
+                                if time.time() - idle.last_wrong_tool_time > 1.5:
+                                    tool_hint = tool_names.get(required_equipment, "Correct Tool")
+                                    fire_class = fire_type.replace('CLASS_', 'Class ')
+                                    notifications.append({
+                                        'message': f"Wrong tool! Use {tool_hint} for {fire_class} fire.",
+                                        'timestamp': time.time()
+                                    })
+                                    idle.last_wrong_tool_time = time.time()
 
         # Automatic water refill when near water stations
         for station in water_stations:
@@ -910,19 +954,22 @@ def showScreen():
     glPushMatrix()
     glLoadIdentity()
     
-    # Top-right corner: All game stats
-    draw_text(750, 750, f"TIME: {int(TIME_LIMIT - game_time)}s")
-    draw_text(750, 700, f"SAVED: {houses_saved}/{NUM_HOUSES}")
-    draw_text(750, 650, f"SCORE: {score}")
-    draw_text(750, 600, f"LIVES: {lives}")
-    draw_text(10, 60, f"Time: {int(scene_time):02d}:00")
+    # Left side: All game stats
+    glColor3f(1.0, 1.0, 0.0)
+    draw_text(10, 750, f"TIME REMAINING: {int(TIME_LIMIT - game_time)}s")
+    draw_text(10, 700, f"SAVED: {houses_saved}/{NUM_HOUSES}")
+    draw_text(10, 650, f"SCORE: {score}")
+    draw_text(10, 600, f"LIVES: {lives}")
+    draw_text(10, 550, f"WATER: {int(fire_truck['water'])}")
+    draw_text(10, 500, f"TOOL: {tool_names.get(current_equipment, 'Unknown')}")
+    draw_text(10, 60, f"CLOCK: {int(scene_time):02d}:00")
 
     
     # Water level (with color indicator)
     water_pct = fire_truck['water'] / WATER_CAPACITY
     water_color = (0.0, 0.7, 1.0) if water_pct > 0.3 else (1.0, 0.0, 0.0)
     glColor3f(*water_color)
-    draw_text(750, 550, f"WATER: {int(fire_truck['water'])}")
+    # draw_text(750, 550, f"WATER: {int(fire_truck['water'])}")
     glColor3f(1.0, 1.0, 1.0)
     
     # Center: Game state messages
